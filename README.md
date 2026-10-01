@@ -5,8 +5,10 @@ the last 90 days the Mist portal shows.
 
 ## How it works
 
-1. Reads `org_id` and `api_token` from `mist_org_audit_log.ini`.
-2. Auto-detects which Mist cloud (US, EU, GC1–7, AC2/5/6) the org lives on.
+1. Reads `org_id`, `api_token` and `cloud` from `mist_org_audit_log.ini`.
+2. Connects to the configured Mist cloud — `cloud` accepts `api.eu.mist.com`,
+   short forms like `eu` / `gc3`, or the portal URL (`https://manage.eu.mist.com`).
+   Leave it blank to auto-detect across US, EU, GC1–7 and AC2/5/6.
 3. Looks up the **first** and **last** audit records and shows them with the
    total record count.
 4. Asks whether to export that full range. Answer `n` to enter your own start
@@ -19,7 +21,7 @@ the last 90 days the Mist portal shows.
 ```bash
 pip install -r requirements.txt
 cp mist_org_audit_log.ini.example mist_org_audit_log.ini
-# edit org_id and api_token
+# edit org_id, api_token and cloud
 python3 mist_org_audit_log.py
 ```
 

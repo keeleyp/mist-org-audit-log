@@ -24,6 +24,9 @@ config.read(os.path.join(SCRIPT_DIR, "mist_org_audit_log.ini"))
 
 ORG_ID = config.get("mist", "org_id")
 API_TOKEN = config.get("mist", "api_token")
+# Mist cloud the org lives on, e.g. "eu", "gc3", "api.eu.mist.com" or the
+# portal URL "https://manage.eu.mist.com". Blank = auto-detect.
+CLOUD = config.get("mist", "cloud", fallback="").strip()
 OUTPUT_DIR = os.path.expanduser("~")
 
 # Mist clouds to probe for the org - first one that returns the org wins.
@@ -135,6 +138,30 @@ def request_with_retry(url, max_retries=5):
         return resp
     resp.raise_for_status()
     return resp
+
+
+def cloud_to_host(cloud):
+    """Normalise the .ini cloud value to an API host URL like https://api.eu.mist.com."""
+    value = cloud.lower().strip()
+    if "://" in value:
+        value = urlparse(value).netloc
+    value = value.strip("/")
+    if value.endswith("mist.com"):
+        if value.startswith("manage."):
+            value = "api." + value[len("manage."):]
+        return f"https://{value}"
+    if value in ("us", "global", "global01"):
+        return "https://api.mist.com"
+    return f"https://api.{value}.mist.com"
+
+
+def connect_configured_cloud(host):
+    """Return org_info from the cloud set in the .ini, or None if the org isn't there."""
+    try:
+        resp = http_get(f"{host}/api/v1/orgs/{ORG_ID}", timeout=15)
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+        sys.exit(f"Could not connect to {host}: {e}\nCheck the cloud setting in mist_org_audit_log.ini.")
+    return resp.json() if resp.status_code == 200 else None
 
 
 def detect_cloud():
@@ -297,11 +324,21 @@ def main():
         print("Set org_id and api_token in mist_org_audit_log.ini before running.")
         return
 
-    print("Locating organisation on Mist cloud...")
-    host, org_info = detect_cloud()
-    if not host:
-        print("  Org not found on any Mist cloud - check org_id and api_token.")
-        return
+    if CLOUD:
+        host = cloud_to_host(CLOUD)
+        print(f"Connecting to {urlparse(host).netloc}...")
+        org_info = connect_configured_cloud(host)
+        if not org_info:
+            print(f"  Org not found on {urlparse(host).netloc} - check org_id, api_token and cloud "
+                  f"in mist_org_audit_log.ini (blank cloud = auto-detect).")
+            return
+    else:
+        print("Locating organisation on Mist cloud (set 'cloud' in the .ini to skip this)...")
+        host, org_info = detect_cloud()
+        if not host:
+            print("  Org not found on any Mist cloud - check org_id and api_token.")
+            return
+        print(f"  Found on {urlparse(host).netloc} - add 'cloud = {urlparse(host).netloc}' to the .ini to skip detection next time.")
     API_HOST = host
     API_BASE = f"{host}/api/v1"
     org_name = org_info.get("name", "Unknown")
