@@ -7,7 +7,7 @@ api_token = YOUR_API_TOKEN_HERE
 #   api.gc5.mist.com  api.gc6.mist.com  api.gc7.mist.com
 #   api.ac2.mist.com  api.ac5.mist.com  api.ac6.mist.com
 # Short forms (eu, gc3) and portal URLs (https://manage.eu.mist.com) also
-# work. Leave blank to auto-detect.
+# work. Required.
 cloud = 
 
 # Optional - only needed if you're behind a TLS-inspecting proxy (e.g.

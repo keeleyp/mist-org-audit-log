@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Export the full Mist org audit trail (beyond the GUI's 90-day limit) to Excel.
 
-Only org_id and api_token are read from mist_org_audit_log.ini. The Mist cloud
-is auto-detected, the earliest and latest audit records are looked up, and the
-user can accept that full range or enter their own start/end dates.
+org_id, api_token and cloud are read from mist_org_audit_log.ini. The earliest
+and latest audit records are looked up, and the user can accept that full range
+or enter their own start/end dates.
 """
 import configparser
 import json
@@ -25,25 +25,9 @@ config.read(os.path.join(SCRIPT_DIR, "mist_org_audit_log.ini"))
 ORG_ID = config.get("mist", "org_id")
 API_TOKEN = config.get("mist", "api_token")
 # Mist cloud the org lives on, e.g. "eu", "gc3", "api.eu.mist.com" or the
-# portal URL "https://manage.eu.mist.com". Blank = auto-detect.
+# portal URL "https://manage.eu.mist.com". Required.
 CLOUD = config.get("mist", "cloud", fallback="").strip()
 OUTPUT_DIR = os.path.expanduser("~")
-
-# Mist clouds to probe for the org - first one that returns the org wins.
-MIST_CLOUDS = [
-    "https://api.mist.com",
-    "https://api.eu.mist.com",
-    "https://api.gc1.mist.com",
-    "https://api.gc2.mist.com",
-    "https://api.gc3.mist.com",
-    "https://api.gc4.mist.com",
-    "https://api.gc5.mist.com",
-    "https://api.gc6.mist.com",
-    "https://api.gc7.mist.com",
-    "https://api.ac2.mist.com",
-    "https://api.ac5.mist.com",
-    "https://api.ac6.mist.com",
-]
 
 # Lower bound for "all history" searches. start=0 is silently ignored by the
 # logs API (it falls back to a short default window), so use a real date that
@@ -155,25 +139,20 @@ def cloud_to_host(cloud):
     return f"https://api.{value}.mist.com"
 
 
-def connect_configured_cloud(host):
-    """Return org_info from the cloud set in the .ini, or None if the org isn't there."""
+def fetch_org_info(host):
+    """Return org_info from the configured cloud, or exit with a clear reason."""
     try:
         resp = http_get(f"{host}/api/v1/orgs/{ORG_ID}", timeout=15)
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
         sys.exit(f"Could not connect to {host}: {e}\nCheck the cloud setting in mist_org_audit_log.ini.")
-    return resp.json() if resp.status_code == 200 else None
-
-
-def detect_cloud():
-    """Return (api_host, org_info) for the first Mist cloud that knows this org."""
-    for host in MIST_CLOUDS:
-        try:
-            resp = http_get(f"{host}/api/v1/orgs/{ORG_ID}", timeout=15)
-        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
-            continue
-        if resp.status_code == 200:
-            return host, resp.json()
-    return None, None
+    if resp.status_code == 401:
+        sys.exit(f"api_token is not valid on {urlparse(host).netloc} - check the token and cloud "
+                 f"in mist_org_audit_log.ini (tokens only work on the cloud they were created on).")
+    if resp.status_code in (403, 404):
+        sys.exit(f"api_token has no access to org {ORG_ID} on {urlparse(host).netloc} - "
+                 f"check org_id in mist_org_audit_log.ini.")
+    resp.raise_for_status()
+    return resp.json()
 
 
 def fetch_boundary_record(sort):
@@ -320,25 +299,13 @@ def auto_width(ws):
 def main():
     global API_BASE, API_HOST
 
-    if API_TOKEN in ("", "YOUR_API_TOKEN_HERE") or ORG_ID in ("", "YOUR_ORG_ID_HERE"):
-        print("Set org_id and api_token in mist_org_audit_log.ini before running.")
+    if API_TOKEN in ("", "YOUR_API_TOKEN_HERE") or ORG_ID in ("", "YOUR_ORG_ID_HERE") or not CLOUD:
+        print("Set org_id, api_token and cloud in mist_org_audit_log.ini before running.")
         return
 
-    if CLOUD:
-        host = cloud_to_host(CLOUD)
-        print(f"Connecting to {urlparse(host).netloc}...")
-        org_info = connect_configured_cloud(host)
-        if not org_info:
-            print(f"  Org not found on {urlparse(host).netloc} - check org_id, api_token and cloud "
-                  f"in mist_org_audit_log.ini (blank cloud = auto-detect).")
-            return
-    else:
-        print("Locating organisation on Mist cloud (set 'cloud' in the .ini to skip this)...")
-        host, org_info = detect_cloud()
-        if not host:
-            print("  Org not found on any Mist cloud - check org_id and api_token.")
-            return
-        print(f"  Found on {urlparse(host).netloc} - add 'cloud = {urlparse(host).netloc}' to the .ini to skip detection next time.")
+    host = cloud_to_host(CLOUD)
+    print(f"Connecting to {urlparse(host).netloc}...")
+    org_info = fetch_org_info(host)
     API_HOST = host
     API_BASE = f"{host}/api/v1"
     org_name = org_info.get("name", "Unknown")

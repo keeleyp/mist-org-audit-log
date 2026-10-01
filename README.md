@@ -6,9 +6,10 @@ the last 90 days the Mist portal shows.
 ## How it works
 
 1. Reads `org_id`, `api_token` and `cloud` from `mist_org_audit_log.ini`.
-2. Connects to the configured Mist cloud — `cloud` accepts `api.eu.mist.com`,
-   short forms like `eu` / `gc3`, or the portal URL (`https://manage.eu.mist.com`).
-   Leave it blank to auto-detect across US, EU, GC1–7 and AC2/5/6.
+2. Connects to the Mist cloud set in `cloud` (required) — use the API host
+   matching the portal you log in to, e.g. `api.eu.mist.com` for
+   `manage.eu.mist.com`. Short forms like `eu` / `gc3` and the portal URL
+   itself also work.
 3. Looks up the **first** and **last** audit records and shows them with the
    total record count.
 4. Asks whether to export that full range. Answer `n` to enter your own start
